@@ -26,7 +26,7 @@ func New(ctx context.Context, cfg config.Config, options Options) (*Context, err
 	manager := collector.NewManager(cfg, st)
 	serviceID := options.ServiceID
 	if serviceID == "" {
-		serviceID = "cpa-manager"
+		serviceID = "cpa-manager-plus"
 	}
 	startedAt := options.StartedAt
 	if startedAt <= 0 {

@@ -43,7 +43,7 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("cpa-manager listening on %s", cfg.HTTPAddr)
+		log.Printf("cpa-manager-plus listening on %s", cfg.HTTPAddr)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("http server: %v", err)
 		}

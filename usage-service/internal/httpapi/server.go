@@ -15,7 +15,7 @@ import (
 //go:embed web/management.html
 var embeddedPanel embed.FS
 
-const serviceID = "cpa-manager"
+const serviceID = "cpa-manager-plus"
 
 var modelPriceSyncURL = "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
 
