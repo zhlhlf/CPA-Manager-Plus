@@ -101,7 +101,12 @@ model -> repository -> service -> controller -> router
 
 ## Quick Start: Full Docker Mode
 
-### Docker Hub Image
+### Container Images
+
+Public multi-arch images are published to both registries:
+
+- Docker Hub: `seakee/cpa-manager-plus`
+- GitHub Container Registry: `ghcr.io/seakee/cpa-manager-plus`
 
 ```bash
 docker run -d \
@@ -129,7 +134,7 @@ On first setup, enter:
 
 You can read the generated admin key with `docker logs cpa-manager-plus`. After setup, the same entry URL uses the saved CPA connection from Manager Server SQLite. New browsers only need the admin key on the login page.
 
-The published image supports `linux/amd64` and `linux/arm64`. If your image is published under another Docker Hub namespace, replace `seakee/cpa-manager-plus:latest`.
+The published image supports `linux/amd64` and `linux/arm64`. Docker examples use Docker Hub by default. To pull from GitHub Container Registry instead, replace `seakee/cpa-manager-plus:latest` with `ghcr.io/seakee/cpa-manager-plus:latest`.
 
 ### Native Packages
 
@@ -193,6 +198,8 @@ Start:
 ```bash
 docker compose up -d
 ```
+
+To use GitHub Container Registry, replace the compose image with `ghcr.io/seakee/cpa-manager-plus:latest`.
 
 ### Linux Host CPA
 
@@ -388,13 +395,14 @@ go run ./cmd/cpa-manager-plus
 ## Build and Release
 
 - Vite builds a single-file `apps/web/dist/index.html`.
-- Tagging `vX.Y.Z` triggers `.github/workflows/release.yml`.
+- Tagging `vX.Y.Z` or a prerelease tag such as `vX.Y.Z-beta` triggers `.github/workflows/release.yml`.
 - The release workflow uploads `apps/web/dist/management.html`, native packages, and `checksums.txt` to GitHub Releases.
 - Native packages are published for `linux`, `darwin`, and `windows` on both `amd64` and `arm64`, with the management panel embedded.
-- The same workflow builds `Dockerfile.manager-server` and pushes `seakee/cpa-manager-plus`.
+- The same workflow builds `Dockerfile.manager-server` and pushes public images to Docker Hub and GitHub Container Registry.
 - The Docker image is published for `linux/amd64` and `linux/arm64`.
-- The workflow syncs `README.md` to the Docker Hub overview.
-- Required GitHub secrets:
+- The GitHub Container Registry image is `ghcr.io/seakee/cpa-manager-plus`; it uses the workflow `GITHUB_TOKEN` with `packages: write`.
+- The workflow syncs `README.md` to the Docker Hub overview when Docker Hub publishing is enabled.
+- Optional GitHub secrets for Docker Hub publishing:
   - `DOCKERHUB_USERNAME`
   - `DOCKERHUB_TOKEN`
 

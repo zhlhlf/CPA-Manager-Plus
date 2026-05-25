@@ -101,7 +101,12 @@ model -> repository -> service -> controller -> router
 
 ## 快速开始：完整 Docker 方案
 
-### Docker Hub 镜像
+### 容器镜像
+
+公开多架构镜像会发布到两个仓库：
+
+- Docker Hub：`seakee/cpa-manager-plus`
+- GitHub Container Registry：`ghcr.io/seakee/cpa-manager-plus`
 
 ```bash
 docker run -d \
@@ -129,7 +134,7 @@ http://<host>:18317/management.html
 
 可通过 `docker logs cpa-manager-plus` 查看首次生成的管理员密钥。setup 完成后，同一入口地址会使用 Manager Server SQLite 中保存的 CPA 连接。新浏览器只需要在登录页填写管理员密钥。
 
-发布镜像支持 `linux/amd64` 和 `linux/arm64`。如果你的镜像发布在其他 Docker Hub 命名空间，把 `seakee/cpa-manager-plus:latest` 替换成实际镜像名。
+发布镜像支持 `linux/amd64` 和 `linux/arm64`。Docker 示例默认使用 Docker Hub。如果要从 GitHub Container Registry 拉取，把 `seakee/cpa-manager-plus:latest` 替换成 `ghcr.io/seakee/cpa-manager-plus:latest`。
 
 ### 原生运行包
 
@@ -193,6 +198,8 @@ volumes:
 ```bash
 docker compose up -d
 ```
+
+如果要使用 GitHub Container Registry，把 compose 中的镜像替换为 `ghcr.io/seakee/cpa-manager-plus:latest`。
 
 ### Linux 宿主机运行 CPA
 
@@ -388,13 +395,14 @@ go run ./cmd/cpa-manager-plus
 ## 构建与发布
 
 - Vite 输出单文件 `apps/web/dist/index.html`
-- 打 `vX.Y.Z` 标签会触发 `.github/workflows/release.yml`
+- 打 `vX.Y.Z` 或 `vX.Y.Z-beta` 这类预发布标签会触发 `.github/workflows/release.yml`
 - 发布流程会上传 `apps/web/dist/management.html`、原生运行包和 `checksums.txt` 到 GitHub Releases
 - 原生运行包会发布 `linux`、`darwin`、`windows` 的 `amd64` 和 `arm64` 版本，包内已内置管理面板
-- 同一个 workflow 会构建 `Dockerfile.manager-server` 并推送 `seakee/cpa-manager-plus`
+- 同一个 workflow 会构建 `Dockerfile.manager-server`，并把公开镜像推送到 Docker Hub 和 GitHub Container Registry
 - Docker 镜像会发布 `linux/amd64` 和 `linux/arm64`
-- workflow 会把 `README.md` 同步到 Docker Hub overview
-- 必需 GitHub secrets：
+- GitHub Container Registry 镜像是 `ghcr.io/seakee/cpa-manager-plus`，使用 workflow 自带的 `GITHUB_TOKEN` 和 `packages: write` 权限发布
+- 启用 Docker Hub 发布时，workflow 会把 `README.md` 同步到 Docker Hub overview
+- Docker Hub 发布的可选 GitHub secrets：
   - `DOCKERHUB_USERNAME`
   - `DOCKERHUB_TOKEN`
 
