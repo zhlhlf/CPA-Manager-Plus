@@ -446,6 +446,62 @@ func TestAnalyticsAppliesFailedOnlyFilter(t *testing.T) {
 	}
 }
 
+func TestAnalyticsAppliesAccountFallbackFilter(t *testing.T) {
+	db := newMonitoringTestStore(t)
+	ctx := context.Background()
+	fromMS := int64(1_778_200_000_000)
+	toMS := fromMS + 60*60*1000
+
+	alice := monitoringEvent("account-alice", fromMS+1_000, "gpt-a", "auth-a", "source-a", false, 10, 5, 0, 0, 15, nil)
+	alice.AccountSnapshot = "alice@example.com"
+	alice.AuthLabelSnapshot = "Alice Auth"
+	alice.Source = "alice-source"
+	bob := monitoringEvent("account-bob", fromMS+2_000, "gpt-b", "auth-b", "source-b", false, 10, 5, 0, 0, 15, nil)
+	bob.AccountSnapshot = "bob@example.com"
+	bob.AuthLabelSnapshot = "Bob Auth"
+	bob.Source = "bob-source"
+
+	if _, err := db.InsertEvents(ctx, []usage.Event{alice, bob}); err != nil {
+		t.Fatalf("insert events: %v", err)
+	}
+
+	resp, err := New(db).Analytics(ctx, Request{
+		FromMS: fromMS,
+		ToMS:   toMS,
+		Filters: Filters{
+			Accounts: []string{"alice@example.com"},
+		},
+		Include: Include{Summary: true, EventsPage: &EventsPage{Limit: 10}},
+	})
+	if err != nil {
+		t.Fatalf("analytics: %v", err)
+	}
+	if resp.Summary == nil || resp.Summary.TotalCalls != 1 || resp.Summary.SuccessCalls != 1 {
+		t.Fatalf("summary = %#v", resp.Summary)
+	}
+	if resp.Events == nil || len(resp.Events.Items) != 1 || resp.Events.Items[0].EventHash != "account-alice" {
+		t.Fatalf("events = %#v", resp.Events)
+	}
+
+	resp, err = New(db).Analytics(ctx, Request{
+		FromMS: fromMS,
+		ToMS:   toMS,
+		Filters: Filters{
+			Accounts: []string{"Alice Auth"},
+		},
+		Include: Include{Summary: true, EventsPage: &EventsPage{Limit: 10}},
+	})
+	if err != nil {
+		t.Fatalf("analytics auth label account filter: %v", err)
+	}
+	if resp.Summary == nil || resp.Summary.TotalCalls != 1 {
+		t.Fatalf("auth label summary = %#v", resp.Summary)
+	}
+	if resp.Events == nil || len(resp.Events.Items) != 1 || resp.Events.Items[0].EventHash != "account-alice" {
+		t.Fatalf("auth label events = %#v", resp.Events)
+	}
+}
+
 func newMonitoringTestStore(t *testing.T) *store.Store {
 	t.Helper()
 	db, err := store.Open(filepath.Join(t.TempDir(), "usage.sqlite"))

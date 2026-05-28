@@ -18,6 +18,7 @@ type AnalyticsFilter struct {
 	SearchQuery       string
 	SearchAPIKeyHash  string
 	Models            []string
+	Accounts          []string
 	AuthIndices       []string
 	APIKeyHashes      []string
 	SourceHashes      []string
@@ -694,6 +695,7 @@ func analyticsWhere(filter AnalyticsFilter) (string, []any) {
 		}
 	}
 	addInCondition("model", filter.Models)
+	addAccountCondition(filter.Accounts, &conditions, &args)
 	addInCondition("auth_index", filter.AuthIndices)
 	addInCondition("api_key_hash", filter.APIKeyHashes)
 	addInCondition("source_hash", filter.SourceHashes)
@@ -708,6 +710,26 @@ func analyticsWhere(filter AnalyticsFilter) (string, []any) {
 	}
 
 	return "where " + strings.Join(conditions, " and "), args
+}
+
+func addAccountCondition(values []string, conditions *[]string, args *[]any) {
+	normalized := normalizeLowerFilterValues(values)
+	if len(normalized) == 0 {
+		return
+	}
+	placeholders := strings.TrimRight(strings.Repeat("?,", len(normalized)), ",")
+	accountConditions := []string{
+		fmt.Sprintf("lower(coalesce(account_snapshot, '')) in (%s)", placeholders),
+		fmt.Sprintf("lower(coalesce(auth_label_snapshot, '')) in (%s)", placeholders),
+		fmt.Sprintf("lower(coalesce(source, '')) in (%s)", placeholders),
+		fmt.Sprintf("lower(coalesce(auth_index, '')) in (%s)", placeholders),
+	}
+	*conditions = append(*conditions, "("+strings.Join(accountConditions, " or ")+")")
+	for range accountConditions {
+		for _, value := range normalized {
+			*args = append(*args, value)
+		}
+	}
 }
 
 func normalizeFilterValues(values []string) []string {
@@ -725,4 +747,12 @@ func normalizeFilterValues(values []string) []string {
 		result = append(result, trimmed)
 	}
 	return result
+}
+
+func normalizeLowerFilterValues(values []string) []string {
+	normalized := normalizeFilterValues(values)
+	for index, value := range normalized {
+		normalized[index] = strings.ToLower(value)
+	}
+	return normalized
 }

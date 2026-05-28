@@ -37,6 +37,7 @@ type Request struct {
 
 type Filters struct {
 	Models            []string `json:"models"`
+	Accounts          []string `json:"accounts"`
 	AuthIndices       []string `json:"auth_indices"`
 	APIKeyHashes      []string `json:"api_key_hashes"`
 	SourceHashes      []string `json:"source_hashes"`
@@ -380,6 +381,7 @@ func buildFilter(req Request) store.AnalyticsFilter {
 		SearchQuery:       req.SearchQuery,
 		SearchAPIKeyHash:  req.SearchAPIKeyHash,
 		Models:            req.Filters.Models,
+		Accounts:          req.Filters.Accounts,
 		AuthIndices:       req.Filters.AuthIndices,
 		APIKeyHashes:      req.Filters.APIKeyHashes,
 		SourceHashes:      req.Filters.SourceHashes,
