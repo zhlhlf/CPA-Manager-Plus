@@ -11,19 +11,19 @@ describe('sortCodexConfigsByPriority', () => {
     { apiKey: 'lowest', baseUrl: 'https://lowest.example.com/v1', priority: -1 },
   ];
 
-  it('sorts known priorities high to low by default and keeps original indexes', () => {
+  it('sorts priorities high to low by default and treats missing priority as 0', () => {
     expect(sortCodexConfigsByPriority(configs).map((item) => item.originalIndex)).toEqual([
-      2, 3, 0, 4, 1,
+      2, 3, 0, 1, 4,
     ]);
   });
 
-  it('sorts known priorities low to high when requested and leaves missing priorities last', () => {
+  it('sorts priorities low to high when requested and treats missing priority as 0', () => {
     expect(sortCodexConfigsByPriority(configs, 'asc').map((item) => item.originalIndex)).toEqual([
-      4, 0, 2, 3, 1,
+      4, 1, 0, 2, 3,
     ]);
   });
 
-  it('preserves the source list order for equal or missing priorities', () => {
+  it('preserves the source list order for equal effective priorities', () => {
     const tiedConfigs: ProviderKeyConfig[] = [
       { apiKey: 'a', priority: 2 },
       { apiKey: 'b', priority: 2 },

@@ -83,15 +83,15 @@ describe('CodexSection', () => {
     clickButton(sortButton);
 
     const firstAscendingRow = getRows(renderer)[0];
-    expect(getText(firstAscendingRow)).toContain('https://low.example.com/v1');
+    expect(getText(firstAscendingRow)).toContain('https://unset.example.com/v1');
 
     const [editLowButton, deleteLowButton] = firstAscendingRow.findAllByType(Button);
     clickButton(editLowButton);
     clickButton(deleteLowButton);
     toggleSwitch(firstAscendingRow.findByType(ToggleSwitch), false);
 
-    expect(onEdit).toHaveBeenLastCalledWith(0);
-    expect(onDelete).toHaveBeenLastCalledWith(0);
-    expect(onToggle).toHaveBeenLastCalledWith(0, false);
+    expect(onEdit).toHaveBeenLastCalledWith(2);
+    expect(onDelete).toHaveBeenLastCalledWith(2);
+    expect(onToggle).toHaveBeenLastCalledWith(2, false);
   });
 });
