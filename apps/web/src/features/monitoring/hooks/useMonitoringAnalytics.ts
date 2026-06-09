@@ -73,6 +73,8 @@ export function useMonitoringAnalytics({
   const requestIdRef = useRef(0);
   const lastStartedAtRef = useRef(0);
   const lastRequestKeyRef = useRef('');
+  const inFlightScopeKeyRef = useRef('');
+  const inFlightRequestIdRef = useRef(0);
 
   const filtersKey = useMemo(() => stableJson(filters), [filters]);
   const includeKey = useMemo(() => stableJson(include), [include]);
@@ -126,10 +128,16 @@ export function useMonitoringAnalytics({
     async (options: MonitoringAnalyticsRefreshOptions = {}) => {
       if (!enabled || !request || !serviceBase) {
         requestIdRef.current += 1;
+        inFlightScopeKeyRef.current = '';
+        inFlightRequestIdRef.current = 0;
         setData(null);
         setDataScopeStateKey('');
         setLastRefreshedAt(null);
         setLoading(false);
+        return;
+      }
+
+      if (inFlightScopeKeyRef.current === activeDataScopeKey) {
         return;
       }
 
@@ -147,6 +155,8 @@ export function useMonitoringAnalytics({
       requestIdRef.current = requestId;
       lastStartedAtRef.current = startedAt;
       lastRequestKeyRef.current = requestKey;
+      inFlightScopeKeyRef.current = activeDataScopeKey;
+      inFlightRequestIdRef.current = requestId;
       setLoading(true);
       setError('');
 
@@ -164,6 +174,10 @@ export function useMonitoringAnalytics({
         if (requestIdRef.current !== requestId) return;
         setError(err instanceof Error ? err.message : String(err));
       } finally {
+        if (inFlightRequestIdRef.current === requestId) {
+          inFlightScopeKeyRef.current = '';
+          inFlightRequestIdRef.current = 0;
+        }
         if (requestIdRef.current === requestId) {
           setLoading(false);
         }
