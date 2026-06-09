@@ -41,14 +41,19 @@ type RuntimeConfig struct {
 	TLSSkipVerify  bool
 }
 
+type UsageEventHandler interface {
+	HandleUsageEvents(ctx context.Context, cfg RuntimeConfig, events []usage.Event)
+}
+
 type Manager struct {
-	base             config.Config
-	store            *store.Store
-	snapshotResolver *authSnapshotResolver
-	mu               sync.Mutex
-	cancel           context.CancelFunc
-	status           Status
-	runtimeCfg       RuntimeConfig
+	base              config.Config
+	store             *store.Store
+	snapshotResolver  *authSnapshotResolver
+	usageEventHandler UsageEventHandler
+	mu                sync.Mutex
+	cancel            context.CancelFunc
+	status            Status
+	runtimeCfg        RuntimeConfig
 }
 
 func NewManager(base config.Config, store *store.Store) *Manager {
@@ -98,6 +103,12 @@ func (m *Manager) Status() Status {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.status
+}
+
+func (m *Manager) SetUsageEventHandler(handler UsageEventHandler) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.usageEventHandler = handler
 }
 
 func (m *Manager) setStatus(update func(*Status)) {
@@ -405,6 +416,9 @@ func (m *Manager) processItems(ctx context.Context, cfg RuntimeConfig, items []s
 	if err != nil {
 		return err
 	}
+	if result.Inserted > 0 {
+		m.handleUsageEvents(ctx, cfg, events)
+	}
 	if result.Inserted > 0 || result.Skipped > 0 {
 		m.setStatus(func(status *Status) {
 			status.LastInsertedAt = time.Now().UnixMilli()
@@ -438,6 +452,16 @@ func classifyUsageControlPayload(payload string) usageControlPayload {
 		return usageControlSupportRefresh
 	}
 	return usageControlNone
+}
+
+func (m *Manager) handleUsageEvents(ctx context.Context, cfg RuntimeConfig, events []usage.Event) {
+	m.mu.Lock()
+	handler := m.usageEventHandler
+	m.mu.Unlock()
+	if handler == nil {
+		return
+	}
+	handler.HandleUsageEvents(ctx, cfg, events)
 }
 
 func (m *Manager) enrichAccountSnapshots(ctx context.Context, cfg RuntimeConfig, events []usage.Event) {

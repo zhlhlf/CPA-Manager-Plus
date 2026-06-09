@@ -76,6 +76,10 @@ func runServer() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	rateLimitAutoDisableWorker := worker.NewRateLimitAutoDisableWorker(db)
+	manager.SetUsageEventHandler(rateLimitAutoDisableWorker)
+	rateLimitAutoDisableWorker.Start(ctx)
+
 	collectorWorker.Start(ctx)
 
 	serverApp := httpapi.New(cfg, db, manager)
