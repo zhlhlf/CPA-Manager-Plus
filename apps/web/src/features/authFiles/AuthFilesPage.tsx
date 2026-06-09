@@ -18,6 +18,7 @@ import { useHeaderRefresh } from '@/hooks/useHeaderRefresh';
 import { usePageTransitionLayer } from '@/components/common/PageTransitionLayer';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { Modal } from '@/components/ui/Modal';
 import { Select } from '@/components/ui/Select';
 import { IconFilterAll, IconSearch } from '@/components/ui/icons';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -36,6 +37,7 @@ import {
   isHealthyAuthFile,
   isRuntimeOnlyAuthFile,
   normalizeProviderKey,
+  parsePriorityValue,
   type QuotaProviderType,
   type ResolvedTheme,
 } from '@/features/authFiles/constants';
@@ -55,6 +57,7 @@ import {
   BATCH_BAR_HIDDEN_TRANSFORM,
   DEFAULT_COMPACT_PAGE_SIZE,
   DEFAULT_REGULAR_PAGE_SIZE,
+  authFileMatchesCodexPlanFilter,
   authFileMatchesCodexStatusFilter,
   buildAuthFileCodexInspectionMap,
   buildWildcardSearch,
@@ -65,11 +68,17 @@ import {
   easePower3Out,
   getAuthFileCodexInspectionKeyForFile,
   getAuthFileCodexStatus,
+  getAuthFilePatchTarget,
   getAuthFilePlanSortRank,
   getAuthFileSearchValues,
+  getAuthFileSelectionKey,
+  getAuthFileNameFromSelectionKey,
+  hasPartialSharedAuthFileSelection,
+  normalizeAuthFilesCodexPlanFilter,
   normalizeAuthFilesCodexStatusFilter,
   stringifySearchValue,
   type AuthFileCodexInspectionSnapshot,
+  type AuthFilesCodexPlanFilter,
   type AuthFilesCodexStatusFilter,
 } from '@/features/authFiles/model/authFilesPageModel';
 import {
@@ -113,6 +122,7 @@ export function AuthFilesPage() {
   const [disabledOnly, setDisabledOnly] = useState(false);
   const [healthyOnly, setHealthyOnly] = useState(false);
   const [codexStatusFilter, setCodexStatusFilter] = useState<AuthFilesCodexStatusFilter>('all');
+  const [codexPlanFilter, setCodexPlanFilter] = useState<AuthFilesCodexPlanFilter>('all');
   const [compactMode, setCompactMode] = useState(false);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -126,6 +136,8 @@ export function AuthFilesPage() {
   const [batchActionBarVisible, setBatchActionBarVisible] = useState(false);
   const [uiStateHydrated, setUiStateHydrated] = useState(false);
   const [authJsonPasteOpen, setAuthJsonPasteOpen] = useState(false);
+  const [batchPriorityOpen, setBatchPriorityOpen] = useState(false);
+  const [batchPriorityValue, setBatchPriorityValue] = useState('');
   const [lastCodexInspectionResults, setLastCodexInspectionResults] = useState<
     AuthFileCodexInspectionSnapshot[]
   >([]);
@@ -146,6 +158,7 @@ export function AuthFilesPage() {
     deletingAll,
     statusUpdating,
     batchStatusUpdating,
+    batchFieldsUpdating,
     fileInputRef,
     loadFiles,
     handleUploadClick,
@@ -161,6 +174,7 @@ export function AuthFilesPage() {
     deselectAll,
     batchDownload,
     batchSetStatus,
+    batchPatchFields,
     batchDelete,
   } = useAuthFilesData();
 
@@ -241,6 +255,10 @@ export function AuthFilesPage() {
       if (persistedCodexStatusFilter) {
         setCodexStatusFilter(persistedCodexStatusFilter);
       }
+      const persistedCodexPlanFilter = normalizeAuthFilesCodexPlanFilter(persisted.codexPlanFilter);
+      if (persistedCodexPlanFilter) {
+        setCodexPlanFilter(persistedCodexPlanFilter);
+      }
       if (typeof persistedCompactMode !== 'boolean' && typeof persisted.compactMode === 'boolean') {
         setCompactMode(persisted.compactMode);
       }
@@ -288,6 +306,7 @@ export function AuthFilesPage() {
       disabledOnly,
       healthyOnly,
       codexStatusFilter,
+      codexPlanFilter,
       compactMode,
       search,
       page,
@@ -299,6 +318,7 @@ export function AuthFilesPage() {
     });
     writePersistedAuthFilesCompactMode(compactMode);
   }, [
+    codexPlanFilter,
     codexStatusFilter,
     compactMode,
     disabledOnly,
@@ -452,9 +472,21 @@ export function AuthFilesPage() {
         if (codexStatus && !authFileMatchesCodexStatusFilter(codexStatus, codexStatusFilter)) {
           return false;
         }
+        if (!authFileMatchesCodexPlanFilter(file, codexQuota[file.name], codexPlanFilter)) {
+          return false;
+        }
         return true;
       }),
-    [codexStatusByAuthFileKey, codexStatusFilter, disabledOnly, files, healthyOnly, problemOnly]
+    [
+      codexPlanFilter,
+      codexQuota,
+      codexStatusByAuthFileKey,
+      codexStatusFilter,
+      disabledOnly,
+      files,
+      healthyOnly,
+      problemOnly,
+    ]
   );
 
   const sortOptions = useMemo(
@@ -485,6 +517,19 @@ export function AuthFilesPage() {
         value: 'disabled_with_reset',
         label: t('auth_files.codex_status_filter_disabled_with_reset'),
       },
+    ],
+    [t]
+  );
+
+  const codexPlanFilterOptions = useMemo(
+    () => [
+      { value: 'all', label: t('auth_files.codex_plan_filter_all') },
+      { value: 'free', label: t('codex_quota.plan_free') },
+      { value: 'plus', label: t('codex_quota.plan_plus') },
+      { value: 'team', label: t('codex_quota.plan_team') },
+      { value: 'prolite', label: t('codex_quota.plan_prolite') },
+      { value: 'pro', label: t('codex_quota.plan_pro') },
+      { value: 'unknown', label: t('auth_files.codex_plan_filter_unknown') },
     ],
     [t]
   );
@@ -586,16 +631,60 @@ export function AuthFilesPage() {
     () => sorted.filter((file) => !isRuntimeOnlyAuthFile(file)),
     [sorted]
   );
-  const selectedNames = useMemo(() => Array.from(selectedFiles), [selectedFiles]);
+  const fileBySelectionKey = useMemo(() => {
+    const map = new Map<string, AuthFileItem>();
+    files.forEach((file) => {
+      map.set(getAuthFileSelectionKey(file), file);
+    });
+    return map;
+  }, [files]);
+  const selectedKeys = useMemo(() => Array.from(selectedFiles), [selectedFiles]);
+  const selectedFileNames = useMemo(
+    () =>
+      Array.from(
+        new Set(selectedKeys.map(getAuthFileNameFromSelectionKey).filter((name) => name.trim()))
+      ),
+    [selectedKeys]
+  );
+  const selectedTargetFiles = useMemo(
+    () =>
+      selectedKeys
+        .map((key) => fileBySelectionKey.get(key))
+        .filter((file): file is AuthFileItem => Boolean(file)),
+    [fileBySelectionKey, selectedKeys]
+  );
+  const selectedPatchTargets = useMemo(
+    () => selectedTargetFiles.map(getAuthFilePatchTarget),
+    [selectedTargetFiles]
+  );
+  const selectedCodexPatchTargets = useMemo(
+    () =>
+      selectedTargetFiles
+        .filter(
+          (file) => normalizeProviderKey(String(file.type ?? file.provider ?? '')) === 'codex'
+        )
+        .map(getAuthFilePatchTarget),
+    [selectedTargetFiles]
+  );
   const selectedHasStatusUpdating = useMemo(
-    () => selectedNames.some((name) => statusUpdating[name] === true),
-    [selectedNames, statusUpdating]
+    () => selectedFileNames.some((name) => statusUpdating[name] === true),
+    [selectedFileNames, statusUpdating]
+  );
+  const selectedHasPartialSharedAuthFile = useMemo(
+    () => hasPartialSharedAuthFileSelection(files, selectedKeys),
+    [files, selectedKeys]
   );
   const batchStatusButtonsDisabled =
     disableControls ||
-    selectedNames.length === 0 ||
+    selectedFileNames.length === 0 ||
     batchStatusUpdating ||
     selectedHasStatusUpdating;
+  const batchFieldsButtonsDisabled =
+    disableControls || selectedPatchTargets.length === 0 || batchFieldsUpdating;
+  const batchCodexFieldsButtonsDisabled =
+    disableControls || selectedCodexPatchTargets.length === 0 || batchFieldsUpdating;
+  const batchDeleteButtonsDisabled =
+    disableControls || selectedFileNames.length === 0 || selectedHasPartialSharedAuthFile;
 
   const copyTextWithNotification = useCallback(
     async (text: string) => {
@@ -608,6 +697,31 @@ export function AuthFilesPage() {
       );
     },
     [showNotification, t]
+  );
+
+  const handleOpenBatchPriority = useCallback(() => {
+    setBatchPriorityValue('');
+    setBatchPriorityOpen(true);
+  }, []);
+
+  const handleBatchPrioritySave = useCallback(async () => {
+    const parsedPriority = parsePriorityValue(batchPriorityValue);
+    if (parsedPriority === undefined) {
+      showNotification(t('auth_files.batch_priority_invalid'), 'error');
+      return;
+    }
+
+    const result = await batchPatchFields(selectedPatchTargets, { priority: parsedPriority });
+    if (result) {
+      setBatchPriorityOpen(false);
+    }
+  }, [batchPatchFields, batchPriorityValue, selectedPatchTargets, showNotification, t]);
+
+  const handleBatchCodexWebsockets = useCallback(
+    (websockets: boolean) => {
+      void batchPatchFields(selectedCodexPatchTargets, { websockets });
+    },
+    [batchPatchFields, selectedCodexPatchTargets]
   );
 
   const openExcludedEditor = useCallback(
@@ -780,8 +894,9 @@ export function AuthFilesPage() {
     </div>
   );
 
+  const codexResultFilterActive = codexStatusFilter !== 'all' || codexPlanFilter !== 'all';
   const deleteAllButtonLabel = (() => {
-    if (disabledOnly || healthyOnly || codexStatusFilter !== 'all') {
+    if (disabledOnly || healthyOnly || codexResultFilterActive) {
       return t('auth_files.delete_filtered_result_button');
     }
     if (problemOnly) {
@@ -840,12 +955,15 @@ export function AuthFilesPage() {
                       problemOnly,
                       disabledOnly,
                       healthyOnly,
-                      filteredFiles: codexStatusFilter !== 'all' ? filtered : undefined,
+                      filteredFiles: codexResultFilterActive ? filtered : undefined,
                       onResetFilterToAll: () => setFilter('all'),
                       onResetProblemOnly: () => setProblemOnly(false),
                       onResetDisabledOnly: () => setDisabledOnly(false),
                       onResetHealthyOnly: () => setHealthyOnly(false),
-                      onResetResultFilters: () => setCodexStatusFilter('all'),
+                      onResetResultFilters: () => {
+                        setCodexStatusFilter('all');
+                        setCodexPlanFilter('all');
+                      },
                     })
                   }
                   disabled={disableControls || loading || deletingAll}
@@ -920,6 +1038,22 @@ export function AuthFilesPage() {
                       setPage(1);
                     }}
                     ariaLabel={t('auth_files.codex_status_filter_label')}
+                    fullWidth
+                  />
+                </div>
+                <div className={styles.filterItem}>
+                  <label>{t('auth_files.codex_plan_filter_label')}</label>
+                  <Select
+                    className={styles.sortSelect}
+                    value={codexPlanFilter}
+                    options={codexPlanFilterOptions}
+                    onChange={(value) => {
+                      const next = normalizeAuthFilesCodexPlanFilter(value);
+                      if (!next || next === codexPlanFilter) return;
+                      setCodexPlanFilter(next);
+                      setPage(1);
+                    }}
+                    ariaLabel={t('auth_files.codex_plan_filter_label')}
                     fullWidth
                   />
                 </div>
@@ -1014,21 +1148,19 @@ export function AuthFilesPage() {
                       key={authFileKey}
                       file={file}
                       compact={compactMode}
-                      selected={selectedFiles.has(file.name)}
+                      selected={selectedFiles.has(getAuthFileSelectionKey(file))}
                       resolvedTheme={resolvedTheme}
                       disableControls={disableControls}
                       deleting={deleting}
                       statusUpdating={statusUpdating}
                       statusBarCache={statusBarCache}
-                      codexStatusBadges={
-                        codexStatusByAuthFileKey.get(authFileKey)?.badges ?? []
-                      }
+                      codexStatusBadges={codexStatusByAuthFileKey.get(authFileKey)?.badges ?? []}
                       onShowModels={showModels}
                       onDownload={handleDownload}
                       onOpenPrefixProxyEditor={openPrefixProxyEditor}
                       onDelete={handleDelete}
                       onToggleStatus={handleStatusToggle}
-                      onToggleSelect={toggleSelect}
+                      onToggleSelect={() => toggleSelect(getAuthFileSelectionKey(file))}
                     />
                   );
                 })}
@@ -1125,6 +1257,53 @@ export function AuthFilesPage() {
         onSave={handleSavePastedAuthJson}
       />
 
+      <Modal
+        open={batchPriorityOpen}
+        onClose={() => {
+          if (!batchFieldsUpdating) setBatchPriorityOpen(false);
+        }}
+        closeDisabled={batchFieldsUpdating}
+        title={t('auth_files.batch_priority_title')}
+        width={420}
+        footer={
+          <div className={styles.batchPriorityFooter}>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setBatchPriorityOpen(false)}
+              disabled={batchFieldsUpdating}
+            >
+              {t('common.cancel')}
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => void handleBatchPrioritySave()}
+              disabled={batchFieldsButtonsDisabled}
+              loading={batchFieldsUpdating}
+            >
+              {t('common.confirm')}
+            </Button>
+          </div>
+        }
+      >
+        <div className={styles.batchPriorityModal}>
+          <Input
+            label={t('auth_files.priority_label')}
+            placeholder={t('auth_files.priority_placeholder')}
+            hint={t('auth_files.priority_hint')}
+            value={batchPriorityValue}
+            onChange={(event) => setBatchPriorityValue(event.target.value)}
+            disabled={disableControls || batchFieldsUpdating}
+            inputMode="numeric"
+            autoFocus
+            onKeyDown={(event) => {
+              if (event.key !== 'Enter' || batchFieldsButtonsDisabled) return;
+              void handleBatchPrioritySave();
+            }}
+          />
+        </div>
+      </Modal>
+
       {batchActionBarVisible && typeof document !== 'undefined'
         ? createPortal(
             <div className={styles.batchActionContainer} ref={floatingBatchActionsRef}>
@@ -1165,14 +1344,14 @@ export function AuthFilesPage() {
                   <Button
                     variant="secondary"
                     size="sm"
-                    onClick={() => void batchDownload(selectedNames)}
-                    disabled={disableControls || selectedNames.length === 0}
+                    onClick={() => void batchDownload(selectedFileNames)}
+                    disabled={disableControls || selectedFileNames.length === 0}
                   >
                     {t('auth_files.batch_download')}
                   </Button>
                   <Button
                     size="sm"
-                    onClick={() => batchSetStatus(selectedNames, true)}
+                    onClick={() => void batchSetStatus(selectedFileNames, true)}
                     disabled={batchStatusButtonsDisabled}
                   >
                     {t('auth_files.batch_enable')}
@@ -1180,16 +1359,43 @@ export function AuthFilesPage() {
                   <Button
                     variant="secondary"
                     size="sm"
-                    onClick={() => batchSetStatus(selectedNames, false)}
+                    onClick={() => void batchSetStatus(selectedFileNames, false)}
                     disabled={batchStatusButtonsDisabled}
                   >
                     {t('auth_files.batch_disable')}
                   </Button>
                   <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleOpenBatchPriority}
+                    disabled={batchFieldsButtonsDisabled}
+                    loading={batchFieldsUpdating}
+                  >
+                    {t('auth_files.batch_priority_button')}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => handleBatchCodexWebsockets(true)}
+                    disabled={batchCodexFieldsButtonsDisabled}
+                    loading={batchFieldsUpdating}
+                  >
+                    {t('auth_files.batch_websockets_enable')}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => handleBatchCodexWebsockets(false)}
+                    disabled={batchCodexFieldsButtonsDisabled}
+                    loading={batchFieldsUpdating}
+                  >
+                    {t('auth_files.batch_websockets_disable')}
+                  </Button>
+                  <Button
                     variant="danger"
                     size="sm"
-                    onClick={() => batchDelete(selectedNames)}
-                    disabled={disableControls || selectedNames.length === 0}
+                    onClick={() => batchDelete(selectedFileNames)}
+                    disabled={batchDeleteButtonsDisabled}
                   >
                     {t('common.delete')}
                   </Button>
