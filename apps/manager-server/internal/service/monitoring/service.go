@@ -397,6 +397,26 @@ type APIKeyStatRow struct {
 	AvgLatencyMS         *float64              `json:"average_latency_ms"`
 	LastSeenMS           int64                 `json:"last_seen_ms"`
 	Models               []AccountModelStatRow `json:"models,omitempty"`
+	Contexts             []APIKeyContextRow    `json:"contexts,omitempty"`
+}
+
+type APIKeyContextRow struct {
+	ID                   string   `json:"id"`
+	AccountSnapshot      string   `json:"account_snapshot,omitempty"`
+	AuthLabelSnapshot    string   `json:"auth_label_snapshot,omitempty"`
+	AuthProviderSnapshot string   `json:"auth_provider_snapshot,omitempty"`
+	AuthIndex            string   `json:"auth_index,omitempty"`
+	Source               string   `json:"source,omitempty"`
+	SourceHash           string   `json:"source_hash,omitempty"`
+	Calls                int64    `json:"calls"`
+	SuccessCalls         int64    `json:"success_calls"`
+	FailureCalls         int64    `json:"failure_calls"`
+	SuccessRate          float64  `json:"success_rate"`
+	FailureRate          float64  `json:"failure_rate"`
+	TotalTokens          int64    `json:"total_tokens"`
+	Cost                 float64  `json:"cost"`
+	AvgLatencyMS         *float64 `json:"average_latency_ms"`
+	LastSeenMS           int64    `json:"last_seen_ms"`
 }
 
 type FilterOptions struct {
@@ -1301,6 +1321,13 @@ type apiKeyStatAccumulator struct {
 	sources        map[string]struct{}
 	sourceHashes   map[string]struct{}
 	models         map[string]*AccountModelStatRow
+	contexts       map[string]*apiKeyContextAccumulator
+	latencySum     float64
+	latencySamples int64
+}
+
+type apiKeyContextAccumulator struct {
+	row            APIKeyContextRow
 	latencySum     float64
 	latencySamples int64
 }
@@ -1552,6 +1579,7 @@ func buildAPIKeyStats(stats []store.APIKeyModelStat, prices map[string]store.Mod
 				sources:      map[string]struct{}{},
 				sourceHashes: map[string]struct{}{},
 				models:       map[string]*AccountModelStatRow{},
+				contexts:     map[string]*apiKeyContextAccumulator{},
 			}
 			grouped[id] = entry
 		}
@@ -1589,6 +1617,7 @@ func buildAPIKeyStats(stats []store.APIKeyModelStat, prices map[string]store.Mod
 			entry.latencySum += stat.AvgLatencyMS.Float64 * float64(stat.LatencySamples)
 			entry.latencySamples += stat.LatencySamples
 		}
+		addAPIKeyContextStat(entry.contexts, stat, cost)
 		addAccountModelStat(entry.models, stat.Model, stat.Calls, stat.SuccessCalls, stat.FailureCalls, stat.InputTokens, stat.OutputTokens, stat.CachedTokens, stat.CacheReadTokens, stat.CacheCreationTokens, stat.TotalTokens, cost, stat.LastSeenMS)
 	}
 
@@ -1599,6 +1628,7 @@ func buildAPIKeyStats(stats []store.APIKeyModelStat, prices map[string]store.Mod
 		entry.row.Sources = sortedSetValues(entry.sources)
 		entry.row.SourceHashes = sortedSetValues(entry.sourceHashes)
 		entry.row.Models = sortedAccountModelStats(entry.models)
+		entry.row.Contexts = sortedAPIKeyContextStats(entry.contexts)
 		if entry.latencySamples > 0 {
 			value := entry.latencySum / float64(entry.latencySamples)
 			entry.row.AvgLatencyMS = &value
@@ -1869,6 +1899,77 @@ func addAccountModelStat(
 		entry.LastSeenMS = lastSeenMS
 	}
 	entry.SuccessRate = ratio(entry.SuccessCalls, entry.Calls)
+}
+
+func apiKeyContextKey(stat store.APIKeyModelStat) string {
+	parts := []string{
+		stat.AuthProviderSnapshot,
+		stat.AccountSnapshot,
+		stat.AuthLabelSnapshot,
+		stat.AuthIndex,
+		stat.SourceHash,
+		stat.Source,
+	}
+	normalized := make([]string, 0, len(parts))
+	for _, value := range parts {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			trimmed = "-"
+		}
+		normalized = append(normalized, trimmed)
+	}
+	return strings.Join(normalized, ":")
+}
+
+func addAPIKeyContextStat(contexts map[string]*apiKeyContextAccumulator, stat store.APIKeyModelStat, cost float64) {
+	key := apiKeyContextKey(stat)
+	entry := contexts[key]
+	if entry == nil {
+		entry = &apiKeyContextAccumulator{
+			row: APIKeyContextRow{
+				ID:                   key,
+				AccountSnapshot:      stat.AccountSnapshot,
+				AuthLabelSnapshot:    stat.AuthLabelSnapshot,
+				AuthProviderSnapshot: stat.AuthProviderSnapshot,
+				AuthIndex:            stat.AuthIndex,
+				Source:               stat.Source,
+				SourceHash:           stat.SourceHash,
+			},
+		}
+		contexts[key] = entry
+	}
+	entry.row.Calls += stat.Calls
+	entry.row.SuccessCalls += stat.SuccessCalls
+	entry.row.FailureCalls += stat.FailureCalls
+	entry.row.TotalTokens += stat.TotalTokens
+	entry.row.Cost += cost
+	if stat.LastSeenMS > entry.row.LastSeenMS {
+		entry.row.LastSeenMS = stat.LastSeenMS
+	}
+	if stat.AvgLatencyMS.Valid && stat.LatencySamples > 0 {
+		entry.latencySum += stat.AvgLatencyMS.Float64 * float64(stat.LatencySamples)
+		entry.latencySamples += stat.LatencySamples
+	}
+	entry.row.SuccessRate = ratio(entry.row.SuccessCalls, entry.row.Calls)
+	entry.row.FailureRate = ratio(entry.row.FailureCalls, entry.row.Calls)
+}
+
+func sortedAPIKeyContextStats(contexts map[string]*apiKeyContextAccumulator) []APIKeyContextRow {
+	result := make([]APIKeyContextRow, 0, len(contexts))
+	for _, context := range contexts {
+		if context.latencySamples > 0 {
+			value := context.latencySum / float64(context.latencySamples)
+			context.row.AvgLatencyMS = &value
+		}
+		result = append(result, context.row)
+	}
+	sort.SliceStable(result, func(i, j int) bool {
+		return result[i].Cost > result[j].Cost ||
+			(result[i].Cost == result[j].Cost && result[i].Calls > result[j].Calls) ||
+			(result[i].Cost == result[j].Cost && result[i].Calls == result[j].Calls && result[i].LastSeenMS > result[j].LastSeenMS) ||
+			(result[i].Cost == result[j].Cost && result[i].Calls == result[j].Calls && result[i].LastSeenMS == result[j].LastSeenMS && result[i].ID < result[j].ID)
+	})
+	return result
 }
 
 func sortedAccountModelStats(models map[string]*AccountModelStatRow) []AccountModelStatRow {

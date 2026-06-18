@@ -674,11 +674,12 @@ func TestAnalyticsAccountAndAPIKeyStatsUseFullFilteredScope(t *testing.T) {
 	events := []usage.Event{
 		monitoringEvent("scope-a", fromMS+1_000, "gpt-a", "auth-1", "source-a", false, 10, 5, 0, 0, 15, nil),
 		monitoringEvent("scope-b", fromMS+2_000, "gpt-a", "auth-1", "source-a", false, 20, 6, 0, 0, 26, nil),
-		monitoringEvent("scope-c", fromMS+3_000, "gpt-b", "auth-1", "source-a", true, 1, 1, 0, 0, 2, nil),
+		monitoringEvent("scope-c", fromMS+3_000, "gpt-b", "auth-2", "source-b", true, 1, 1, 0, 0, 2, nil),
 	}
 	for index := range events {
 		events[index].AccountSnapshot = "team@example.com"
 		events[index].AuthLabelSnapshot = "Team Account"
+		events[index].AuthProviderSnapshot = "codex"
 		events[index].APIKeyHash = "client-key-hash"
 	}
 	if _, err := db.InsertEvents(ctx, events); err != nil {
@@ -715,6 +716,19 @@ func TestAnalyticsAccountAndAPIKeyStatsUseFullFilteredScope(t *testing.T) {
 		resp.APIKeyStats[0].Calls != 3 || resp.APIKeyStats[0].FailureCalls != 1 ||
 		resp.APIKeyStats[0].TotalTokens != 43 {
 		t.Fatalf("api key stats = %#v", resp.APIKeyStats)
+	}
+	if len(resp.APIKeyStats[0].Contexts) != 2 {
+		t.Fatalf("api key contexts = %#v", resp.APIKeyStats[0].Contexts)
+	}
+	if resp.APIKeyStats[0].Contexts[0].AuthIndex != "auth-1" ||
+		resp.APIKeyStats[0].Contexts[0].Calls != 2 ||
+		resp.APIKeyStats[0].Contexts[0].FailureCalls != 0 {
+		t.Fatalf("top api key context = %#v", resp.APIKeyStats[0].Contexts[0])
+	}
+	if resp.APIKeyStats[0].Contexts[1].AuthIndex != "auth-2" ||
+		resp.APIKeyStats[0].Contexts[1].Calls != 1 ||
+		resp.APIKeyStats[0].Contexts[1].FailureRate != 1 {
+		t.Fatalf("second api key context = %#v", resp.APIKeyStats[0].Contexts[1])
 	}
 }
 
