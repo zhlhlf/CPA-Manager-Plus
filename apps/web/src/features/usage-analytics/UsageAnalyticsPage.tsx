@@ -12,7 +12,6 @@ import type {
   BarSeriesOption,
   HeatmapSeriesOption,
   LineSeriesOption,
-  PieSeriesOption,
 } from 'echarts/charts';
 import type { ComposeOption, ECElementEvent } from 'echarts/core';
 import { EChartsView } from '@/components/charts/EChartsView';
@@ -137,10 +136,6 @@ type UsageTrendChartOption = ComposeOption<
   | TooltipComponentOption
 >;
 
-type CostShareChartOption = ComposeOption<
-  LegendComponentOption | PieSeriesOption | TooltipComponentOption
->;
-
 type CostRankChartOption = ComposeOption<
   BarSeriesOption | GridComponentOption | TooltipComponentOption
 >;
@@ -200,6 +195,8 @@ type HealthTimelineMatrix = {
 };
 
 type HealthCellStyle = CSSProperties & Record<'--cell-intensity', number>;
+type CostShareRankStyle = CSSProperties &
+  Record<'--rank-color' | '--rank-share', string | number>;
 
 const usageChartAxisKeys = {
   requests: 0,
@@ -844,7 +841,11 @@ function CostShareChart({ rows }: { rows: UsageRankRow[] }) {
   const { t } = useTranslation();
   const chartTheme = useUsageChartTheme();
   const totalCost = rows.reduce((sum, row) => sum + row.estimatedCost, 0);
-  const chartRows = rows.filter((row) => row.estimatedCost > 0).slice(0, 5);
+  const chartRows = [...rows]
+    .filter((row) => row.estimatedCost > 0)
+    .sort((left, right) => right.estimatedCost - left.estimatedCost)
+    .slice(0, 5);
+  const maxCost = Math.max(...chartRows.map((row) => row.estimatedCost), 0);
 
   if (totalCost <= 0 || chartRows.length === 0) {
     return (
@@ -855,95 +856,51 @@ function CostShareChart({ rows }: { rows: UsageRankRow[] }) {
     );
   }
 
-  const option: CostShareChartOption = {
-    animationDuration: 260,
-    backgroundColor: 'transparent',
-    color: chartTheme.categoryPalette,
-    legend: { show: false },
-    tooltip: {
-      appendToBody: true,
-      ...getTooltipOption(chartTheme),
-      borderRadius: 10,
-      borderWidth: 1,
-      className: styles.echartsTooltipWrapper,
-      confine: true,
-      formatter: (params: unknown) => {
-        const item = params as { data?: { value?: number }; marker?: string; name?: string };
-        const value = Number(item.data?.value ?? 0);
-        const titleHtml = escapeHtml(
-          item.name // user-controlled tooltip label
-        );
-        return tooltipHtml(
-          chartTheme,
-          `${tooltipRowHtml(
-            chartTheme,
-            `${item.marker ?? ''}${escapeHtml(t('usage_analytics.total_cost'))}`,
-            escapeHtml(formatMetricValue('estimatedCost', value))
-          )}${tooltipRowHtml(
-            chartTheme,
-            escapeHtml(t('usage_analytics.share')),
-            escapeHtml(formatPercent(value / totalCost))
-          )}`,
-          titleHtml
-        );
-      },
-      padding: 0,
-      trigger: 'item',
-    },
-    series: [
-      {
-        avoidLabelOverlap: true,
-        center: ['50%', '50%'],
-        data: chartRows.map((row) => ({
-          name: row.label,
-          value: row.estimatedCost,
-        })),
-        emphasis: {
-          itemStyle: {
-            shadowBlur: 12,
-            shadowColor: chartTheme.surface.pieShadow,
-          },
-          scaleSize: 4,
-        },
-        itemStyle: {
-          borderColor: chartTheme.surface.pieBorder,
-          borderRadius: 6,
-          borderWidth: 3,
-        },
-        label: { show: false },
-        labelLine: { show: false },
-        radius: ['58%', '78%'],
-        type: 'pie',
-      },
-    ],
-  };
-
   return (
     <div className={styles.costShareChart}>
-      <div className={styles.costShareDonut}>
-        <EChartsView
-          option={option}
-          className={styles.echartsCanvas}
-          style={{ height: 180 }}
-          ariaLabel={t('usage_analytics.cost_share_title')}
-        />
-        <div className={styles.donutCenter} aria-hidden="true">
-          <strong>{formatMetricValue('estimatedCost', totalCost)}</strong>
-          <span>{t('usage_analytics.total_cost')}</span>
-        </div>
+      <div className={styles.costShareSummary}>
+        <span>{t('usage_analytics.total_cost')}</span>
+        <strong>{formatMetricValue('estimatedCost', totalCost)}</strong>
       </div>
-      <div className={styles.costShareLegend}>
+      <div className={styles.costShareRankList}>
         {chartRows.map((row, index) => (
-          <span key={row.id}>
-            <i
-              style={{
-                backgroundColor:
-                  chartTheme.categoryPalette[index % chartTheme.categoryPalette.length],
-              }}
-            />
-            <b>{row.label}</b>
-            <em>{formatPercent(row.estimatedCost / totalCost)}</em>
-          </span>
+          <div
+            key={row.id}
+            className={styles.costShareRankRow}
+            title={`${row.label} ${formatMetricValue('estimatedCost', row.estimatedCost)} ${formatPercent(
+              row.estimatedCost / totalCost
+            )}`}
+          >
+            <span className={styles.costShareRankHeader}>
+              <span className={styles.costShareRankIdentity}>
+                <i
+                  className={styles.costShareRankSwatch}
+                  style={{
+                    background:
+                      chartTheme.categoryPalette[index % chartTheme.categoryPalette.length],
+                  }}
+                  aria-hidden="true"
+                />
+                <span>{row.label}</span>
+              </span>
+              <span className={styles.costShareRankMeta}>
+                <strong>{formatMetricValue('estimatedCost', row.estimatedCost)}</strong>
+                <span>{formatPercent(row.estimatedCost / totalCost)}</span>
+              </span>
+            </span>
+            <span className={styles.costShareRankTrack} aria-hidden="true">
+              <span
+                className={styles.costShareRankBar}
+                style={
+                  {
+                    '--rank-color':
+                      chartTheme.categoryPalette[index % chartTheme.categoryPalette.length],
+                    '--rank-share': maxCost > 0 ? row.estimatedCost / maxCost : 0,
+                  } as CostShareRankStyle
+                }
+              />
+            </span>
+          </div>
         ))}
       </div>
     </div>
@@ -3020,20 +2977,12 @@ function UsageAnalyticsPageInner() {
     { value: 'hit', label: t('usage_analytics.cache_status_hit') },
     { value: 'miss', label: t('usage_analytics.cache_status_miss') },
   ];
-  const trendMetricSelectOptions: SelectOption[] = trendMetricOptions.map((option) => ({
-    value: option.value,
-    label: t(option.labelKey),
-  }));
   const noData = !usage.loading && !usage.error && !hasUsageData(usage.summary, usage.timeline);
   const rankRowLimit = 8;
   const credentialRankRowLimit = 10;
   const visibleModelRows = showAllModels ? usage.modelRows : usage.modelRows.slice(0, rankRowLimit);
   const visibleApiKeyRows = usage.apiKeyRows.slice(0, 8);
   const visibleCredentialRows = usage.credentialRows.slice(0, credentialRankRowLimit);
-  const modelInsights = useMemo(
-    () => usage.insights.filter((insight) => insight.actionTab === 'models'),
-    [usage.insights]
-  );
   const selectedModelKeyDistribution = useMemo(
     () =>
       usage.selectedModel
@@ -3659,18 +3608,29 @@ function UsageAnalyticsPageInner() {
           </section>
           <section className={styles.dualChartGrid}>
             <div className={styles.panel}>
-              <div className={styles.panelHeader}>
+              <div className={`${styles.panelHeader} ${styles.trendEntityHeader}`}>
                 <div>
                   <h2>{t('usage_analytics.model_compare_title')}</h2>
                   <p>{t('usage_analytics.entity_trend_hint')}</p>
                 </div>
-                <Select
-                  value={usage.trendMetric}
-                  options={trendMetricSelectOptions}
-                  onChange={(value) => usage.setTrendMetric(value as UsageTrendMetricKey)}
-                  ariaLabel={t('usage_analytics.filter_metric')}
-                  triggerClassName={styles.compactSelectTrigger}
-                />
+                <div
+                  className={`${styles.segmentedControl} ${styles.trendMetricTabs}`}
+                  aria-label={t('usage_analytics.filter_metric')}
+                >
+                  {trendMetricOptions.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={`${styles.segmentButton} ${
+                        usage.trendMetric === option.value ? styles.segmentButtonActive : ''
+                      }`}
+                      onClick={() => usage.setTrendMetric(option.value)}
+                      aria-pressed={usage.trendMetric === option.value}
+                    >
+                      {t(option.labelKey)}
+                    </button>
+                  ))}
+                </div>
               </div>
               <EntityTrendChart
                 series={usage.modelTrendSeries}
@@ -3710,7 +3670,6 @@ function UsageAnalyticsPageInner() {
               }
             />
           ) : null}
-          <InsightsPanel insights={modelInsights} onOpen={usage.setActiveTab} />
         </>
       ) : null}
 

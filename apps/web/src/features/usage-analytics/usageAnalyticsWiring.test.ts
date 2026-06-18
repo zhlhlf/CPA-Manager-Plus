@@ -354,7 +354,7 @@ describe('usage analytics app wiring', () => {
   it('escapes user-controlled chart tooltip labels before returning tooltip HTML', () => {
     expect(pageSource).toContain('const escapeHtml = (value: string | number | null | undefined)');
     expect(pageSource).not.toContain('<b>${item.name}</b>');
-    expect(pageSource).toContain('escapeHtml(\n          item.name');
+    expect(pageSource).toMatch(/escapeHtml\(\s*item\.name/);
     expect(pageSource).toContain("${entry.marker ?? ''}${escapeHtml(entry.seriesName)}");
   });
 

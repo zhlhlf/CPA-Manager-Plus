@@ -741,8 +741,8 @@ describe('UsageAnalyticsPage', () => {
     expect(usageState.setActiveTab).toHaveBeenCalledWith('heatmap');
   });
 
-  it('renders the models tab with unit-economics columns and model-scoped insights only', () => {
-    mocks.usageState = createUsageState({
+  it('renders the models tab with unit-economics columns and no insights panel', () => {
+    const usageState = createUsageState({
       activeTab: 'models',
       insights: [
         {
@@ -761,6 +761,7 @@ describe('UsageAnalyticsPage', () => {
         },
       ],
     });
+    mocks.usageState = usageState;
     const renderer = renderPage();
     const text = getText(renderer.root);
 
@@ -772,8 +773,16 @@ describe('UsageAnalyticsPage', () => {
     expect(text).toContain('usage_analytics.model_top_cost_share');
     expect(text).toContain('usage_analytics.model_caller_distribution');
     expect(text).toContain('usage_analytics.view_request_details');
-    expect(text).toContain('usage_analytics.insight_model_cost_high');
+    expect(text).not.toContain('usage_analytics.insights_title');
+    expect(text).not.toContain('usage_analytics.insight_model_cost_high');
     expect(text).not.toContain('usage_analytics.insight_credential_success_drop');
+    expect(
+      findHostButtonByText(renderer, 'usage_analytics.trend_metric_requestCount').props[
+        'aria-pressed'
+      ]
+    ).toBe(true);
+    clickHostButton(findHostButtonByText(renderer, 'usage_analytics.trend_metric_totalTokens'));
+    expect(usageState.setTrendMetric).toHaveBeenCalledWith('totalTokens');
     // Only one model row, so the show-all toggle stays hidden.
     expect(text).not.toContain('usage_analytics.rank_show_all');
   });
