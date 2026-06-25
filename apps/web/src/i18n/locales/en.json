@@ -3226,6 +3226,11 @@
     "dark": "Dark",
     "auto": "Auto"
   },
+  "visual_effects": {
+    "switch": "Visual effects",
+    "full": "Full effects",
+    "reduced": "Performance"
+  },
   "sidebar": {
     "toggle_expand": "Expand sidebar",
     "toggle_collapse": "Collapse sidebar"

@@ -3172,6 +3172,11 @@
     "dark": "黑夜",
     "auto": "自动"
   },
+  "visual_effects": {
+    "switch": "视觉效果",
+    "full": "完整效果",
+    "reduced": "性能优先"
+  },
   "sidebar": {
     "toggle_expand": "展开侧边栏",
     "toggle_collapse": "收起侧边栏"

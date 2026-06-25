@@ -3197,6 +3197,11 @@
     "dark": "黑夜",
     "auto": "自動"
   },
+  "visual_effects": {
+    "switch": "視覺效果",
+    "full": "完整效果",
+    "reduced": "效能優先"
+  },
   "sidebar": {
     "toggle_expand": "展開側邊欄",
     "toggle_collapse": "收起側邊欄"
