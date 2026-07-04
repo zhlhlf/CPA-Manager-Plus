@@ -46,9 +46,14 @@ export const resolveDefaultCPAConnectionBase = (options?: {
 
 export const detectApiBaseFromLocation = (): string => {
   try {
-    const { protocol, hostname, port } = window.location;
+    const { protocol, hostname, port, pathname } = window.location;
     const normalizedPort = port ? `:${port}` : '';
-    return normalizeApiBase(`${protocol}//${hostname}${normalizedPort}`);
+    const baseUrl = `${protocol}//${hostname}${normalizedPort}`;
+    const prefix = pathname.replace(/\/management\.html.*$/, '').replace(/\/+$/, '');
+    if (prefix && prefix !== '/') {
+      return normalizeApiBase(`${baseUrl}${prefix}`);
+    }
+    return normalizeApiBase(baseUrl);
   } catch (error) {
     console.warn('Failed to detect api base from location, fallback to default', error);
     return normalizeApiBase(`http://localhost:${DEFAULT_API_PORT}`);
