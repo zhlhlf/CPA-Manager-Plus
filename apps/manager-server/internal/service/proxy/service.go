@@ -201,6 +201,35 @@ func isJSONContentType(value string) bool {
 	return contentType == "application/json" || strings.HasSuffix(contentType, "+json")
 }
 
+func (s *Service) ProxyV1(w http.ResponseWriter, r *http.Request, writeError func(http.ResponseWriter, int, error)) {
+	setup, ok, err := s.resolveSetup(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	if !ok {
+		writeError(w, http.StatusPreconditionRequired, errors.New("usage service is not configured"))
+		return
+	}
+	target, err := url.Parse(setup.CPAUpstreamURL)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	proxy := httputil.NewSingleHostReverseProxy(target)
+	originalDirector := proxy.Director
+	proxy.Director = func(req *http.Request) {
+		originalDirector(req)
+		req.URL.Scheme = target.Scheme
+		req.URL.Host = target.Host
+		req.Host = target.Host
+	}
+	proxy.ErrorHandler = func(w http.ResponseWriter, _ *http.Request, err error) {
+		writeError(w, http.StatusBadGateway, err)
+	}
+	proxy.ServeHTTP(w, r)
+}
+
 func (s *Service) ProxyModelList(w http.ResponseWriter, r *http.Request, writeError func(http.ResponseWriter, int, error), methodNotAllowed func(http.ResponseWriter)) {
 	if r.Method != http.MethodGet {
 		methodNotAllowed(w)

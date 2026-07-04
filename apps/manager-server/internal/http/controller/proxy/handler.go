@@ -34,6 +34,10 @@ func (h *Handler) Management(w http.ResponseWriter, r *http.Request) {
 	h.App.ProxyService.ProxyPluginManagementWithCallerAuth(w, r, response.Error)
 }
 
+func (h *Handler) V1Proxy(w http.ResponseWriter, r *http.Request) {
+	h.App.ProxyService.ProxyV1(w, r, response.Error)
+}
+
 func (h *Handler) ModelList(w http.ResponseWriter, r *http.Request) {
 	h.App.ProxyService.ProxyModelList(w, r, response.Error, response.MethodNotAllowed)
 }

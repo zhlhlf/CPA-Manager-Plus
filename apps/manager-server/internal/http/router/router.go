@@ -105,9 +105,12 @@ func rootHandler(
 			middleware.WithCORS(appCtx.Config, proxyHandler.Management)(w, r)
 			return
 		}
-		if r.URL.Path == "/v1/models" || r.URL.Path == "/v1/models/" ||
-			r.URL.Path == "/models" || r.URL.Path == "/models/" {
+		if r.URL.Path == "/models" || r.URL.Path == "/models/" {
 			middleware.WithCORS(appCtx.Config, proxyHandler.ModelList)(w, r)
+			return
+		}
+		if strings.HasPrefix(r.URL.Path, "/v1/") {
+			middleware.WithCORS(appCtx.Config, proxyHandler.V1Proxy)(w, r)
 			return
 		}
 		if proxysvc.IsCPAPluginResourcePath(r.URL.Path) {
