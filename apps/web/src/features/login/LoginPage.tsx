@@ -418,23 +418,23 @@ export function LoginPage() {
           trimmedAdminKey
         );
         setUsageServiceConfig(
-          { enabled: true, serviceBase: detectedBase },
-          { panelBase: detectedBase, panelHostMode: 'manager_embedded' }
+          { enabled: true, serviceBase: baseToUse },
+          { panelBase: baseToUse, panelHostMode: 'manager_embedded' }
         );
         localStorage.setItem(USAGE_SERVICE_LAST_CPA_BASE_KEY, baseToUse);
       } else if (isManagerServerMode) {
         setUsageServiceConfig(
-          { enabled: true, serviceBase: detectedBase },
-          { panelBase: detectedBase, panelHostMode: 'manager_embedded' }
+          { enabled: true, serviceBase: baseToUse },
+          { panelBase: baseToUse, panelHostMode: 'manager_embedded' }
         );
       }
 
       const loginResult = await login({
-        apiBase: isManagerServerMode ? detectedBase : baseToUse,
+        apiBase: baseToUse,
         managementKey: isManagerServerMode ? trimmedAdminKey : trimmedCPAKey,
         rememberPassword: rememberCredential,
         sessionMode: isManagerServerMode ? 'manager_embedded' : 'external_panel',
-        sessionPanelBase: detectedBase,
+        sessionPanelBase: baseToUse,
       });
       showNotification(t('common.connected_status'), 'success');
       if (loginResult.recoveryMode === 'manager_config') {
